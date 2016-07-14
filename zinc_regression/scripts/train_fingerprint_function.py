@@ -92,9 +92,6 @@ def train_nn(
             print("Iteration {}".format(iter))
             print("\tmax of weights: {}".format(np.max(np.abs(weights))))
 
-			import pdb
-			pdb.set_trace()
-
             cur_loss = loss_fun(weights, train_smiles, train_targets)
             training_curve.append(cur_loss)
             print("\tloss {}".format(cur_loss))
