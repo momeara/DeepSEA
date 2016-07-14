@@ -214,9 +214,7 @@ bazel-bin/tensorflow/tools/pip_package/build_pip_package /scratch/momeara/tensor
 
 # This recent issue is relevant: https://github.com/tensorflow/tensorflow/issues/2040
 system("
-cd /mnt/nfs/work/momeara/sea/DeepSEA/tensorflow/tensorflow/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/
-ln -s ../../../../../external .
-cd /mnt/nfs/work/momeara/sea/DeepSEA/tensorflow/tensorflow
+cd ~/work/sea/DeepSEA/tensorflow/tensorflow
 setenv CC '/mnt/nfs/home/momeara/opt/bin/gcc'
 setenv CXX '/mnt/nfs/home/momeara/opt/bin/g++' 
 setenv EXTRA_BAZEL_ARGS '--verbose_failures --jobs=1'
@@ -225,6 +223,184 @@ setenv C_INCLUDE_PATH '/mnt/nfs/home/momeara/opt/include'
 setenv LIBRARY_PATH '/mnt/nfs/home/momeara/opt/lib:/mnt/nfs/home/momeara/opt/lib64'
 setenv LD_LIBRARY_PATH '/mnt/nfs/home/momeara/opt/lib:/mnt/nfs/home/momeara/opt/lib64'
 
+./configure
+../bazel/output/bazel clean
+../bazel/output/bazel build -c opt //tensorflow/cc:tutorials_example_trainer
+../bazel/output/bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+
+cd /mnt/nfs/work/momeara/sea/DeepSEA/tensorflow/tensorflow/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/
+ln -s ../../../../../external .
+cd /mnt/nfs/work/momeara/sea/DeepSEA/tensorflow/tensorflow
+
 bazel-bin/tensorflow/tools/pip_package/build_pip_package /scratch/momeara/tensorflow_pkg
-pip install /scratch/momeara/tensorflow_pkg/tensorflow-0.8.0-py2-none-any.whl
+pip install /scratch/momeara/tensorflow_pkg/tensorflow-0.9.0-py2-none-any.whl
+
+../bazel/output/bazel build tensorflow/tensorboard:tensorboard
+
+cd tensorflow/tensorboard
+bower install
 ")
+
+
+#### now try to install with GPU support
+
+# install cuDNN
+# https://developer.nvidia.com/cudnn
+#   download cudnn-7.5-linux-x64-v5.1-rc.tgz and copy to ~/work/sea/DeepSEA/
+system("
+cd ~/work/sea/DeepSEA/
+tar xzvf cudnn-7.5-linux-x64-v5.1-rc.tgz
+rm cudnn-7.5-linux-x64-v5.1-rc.tgz
+")
+
+system("
+cd ~/work/sea/DeepSEA/tensorflow/tensorflow
+setenv CC '/mnt/nfs/home/momeara/opt/bin/gcc'
+setenv CXX '/mnt/nfs/home/momeara/opt/bin/g++' 
+setenv EXTRA_BAZEL_ARGS '--verbose_failures --jobs=1'
+setenv CPLUS_INCLUDE_PATH '/mnt/nfs/home/momeara/opt/include'
+setenv C_INCLUDE_PATH '/mnt/nfs/home/momeara/opt/include'
+setenv LIBRARY_PATH '/mnt/nfs/home/momeara/opt/lib:/mnt/nfs/home/momeara/opt/lib64'
+setenv LD_LIBRARY_PATH '/usr/local/cuda-7.5/lib64:/mnt/nfs/home/momeara/opt/lib:/mnt/nfs/home/momeara/opt/lib64'
+setenv PATH /usr/local/cuda-7.5/bin:$PATH
+
+./configure
+# Please specify the location of python. [Default is /mnt/nfs/work/momeara/tools/anaconda2/bin/python]: 
+# Do you wish to build TensorFlow with Google Cloud Platform support? [y/N] n
+# No Google Cloud Platform support will be enabled for TensorFlow
+# Do you wish to build TensorFlow with GPU support? [y/N] y
+# GPU support will be enabled for TensorFlow
+# Please specify which gcc nvcc should use as the host compiler. [Default is /mnt/nfs/home/momeara/opt/bin/gcc]:
+# Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: 7.5
+# Please specify the location where CUDA 7.5 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]: 
+# Please specify the Cudnn version you want to use. [Leave empty to use system default]: 5.1.3
+# Please specify the location where cuDNN 5.1.3 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]: /mnt/nfs/work/momeara/sea/DeepSEA/cuda
+# Please specify a list of comma-separated Cuda compute capabilities you want to build with.
+# You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
+# Please note that each additional compute capability significantly increases your build time and binary size.
+# [Default is: \"3.5,5.2\"]: 5.2
+
+../bazel/output/bazel clean
+../bazel/output/bazel build -c opt --config=cuda //tensorflow/cc:tutorials_example_trainer
+../bazel/output/bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+
+
+cd /mnt/nfs/work/momeara/sea/DeepSEA/tensorflow/tensorflow/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/
+ln -s ../../../../../external .
+cd /mnt/nfs/work/momeara/sea/DeepSEA/tensorflow/tensorflow
+
+bazel-bin/tensorflow/tools/pip_package/build_pip_package /scratch/momeara/tensorflow_pkg
+pip install --upgrade /scratch/momeara/tensorflow_pkg/tensorflow-0.9.0-py2-none-any.whl
+
+../bazel/output/bazel build -c opt --config=cuda tensorflow/tensorboard:tensorboard
+
+")
+# ERROR: /mnt/nfs/home/momeara/.cache/bazel/_bazel_momeara/ef8339021629a8146b3e301bb7dc3099/external/zlib_archive/BUILD:7:1: undeclared inclusion(s) in rule '@zlib_archive//:zlib':
+# this rule is missing dependency declarations for the following files included by 'external/zlib_archive/zlib-1.2.8/uncompr.c':
+#   '/mnt/nfs/home/momeara/opt/lib/gcc/x86_64-unknown-linux-gnu/4.9.3/include-fixed/limits.h'
+#   '/mnt/nfs/home/momeara/opt/lib/gcc/x86_64-unknown-linux-gnu/4.9.3/include-fixed/syslimits.h'
+#   '/mnt/nfs/home/momeara/opt/lib/gcc/x86_64-unknown-linux-gnu/4.9.3/include/stddef.h'
+#   '/mnt/nfs/home/momeara/opt/lib/gcc/x86_64-unknown-linux-gnu/4.9.3/include/stdarg.h'.
+
+
+# from this issue: https://github.com/tensorflow/tensorflow/issues/469
+# follow modifications here: https://github.com/noisychannel/tensorflow_install/blob/master/tf_install.sh
+
+# diff --git a/third_party/gpus/crosstool/CROSSTOOL b/third_party/gpus/crosstool/CROSSTOOL
+# index 8db81a9..f3a55b7 100644
+# --- a/third_party/gpus/crosstool/CROSSTOOL
+# +++ b/third_party/gpus/crosstool/CROSSTOOL
+# @@ -40,7 +40,7 @@ toolchain {
+#  
+#    tool_path { name: "ar" path: "/usr/bin/ar" }
+#    tool_path { name: "compat-ld" path: "/usr/bin/ld" }
+# -  tool_path { name: "cpp" path: "/usr/bin/cpp" }
+# +  tool_path { name: "cpp" path: "/mnt/nfs/home/momeara/opt/bin/cpp" }
+#    tool_path { name: "dwp" path: "/usr/bin/dwp" }
+#    # As part of the TensorFlow release, we place some cuda-related compilation
+#    # files in third_party/gpus/crosstool/clang/bin, and this relative
+# @@ -51,16 +51,21 @@ toolchain {
+#    # and the device compiler to use "-std=c++11".
+#    cxx_flag: "-std=c++11"
+#    linker_flag: "-lstdc++"
+# -  linker_flag: "-B/usr/bin/"
+# +  linker_flag: "-B/mnt/nfs/home/momeara/opt/bin/"
+# +  linker_flag: "-L/mnt/nfs/home/momeara/opt/lib64/"
+# +  linker_flag: "-Wl,-rpath,/mnt/nfs/home/momeara/opt/lib64/"
+# +
+#  
+#    # TODO(bazel-team): In theory, the path here ought to exactly match the path
+#    # used by gcc. That works because bazel currently doesn't track files at
+#    # absolute locations and has no remote execution, yet. However, this will need
+#    # to be fixed, maybe with auto-detection?
+# -  cxx_builtin_include_directory: "/usr/lib/gcc/"
+# -  cxx_builtin_include_directory: "/usr/local/include"
+# +
+# +  cxx_builtin_include_directory: "/mnt/nfs/home/momeara/opt/lib/gcc/"
+# +  cxx_builtin_include_directory: "/mnt/nfs/home/momeara/opt/lib64/"
+# +  cxx_builtin_include_directory: "/mnt/nfs/home/momeara/opt/include"
+#    cxx_builtin_include_directory: "/usr/include"
+# -  tool_path { name: "gcov" path: "/usr/bin/gcov" }
+# +  tool_path { name: "gcov" path: "/mnt/nfs/home/momeara/opt/bin/gcov" }
+#  
+#    # C(++) compiles invoke the compiler (as that is the one knowing where
+#    # to find libraries), but we provide LD so other rules can invoke the linker.
+# @@ -70,8 +75,8 @@ toolchain {
+#    tool_path { name: "objcopy" path: "/usr/bin/objcopy" }
+#    objcopy_embed_flag: "-I"
+#    objcopy_embed_flag: "binary"
+# -  tool_path { name: "objdump" path: "/usr/bin/objdump" }
+# -  tool_path { name: "strip" path: "/usr/bin/strip" }
+# +  tool_path { name: "objdump" path: "/mnt/nfs/home/momeara/opt/bin/objdump" }
+# +  tool_path { name: "strip" path: "/mnt/nfs/home/momeara/opt/bin/strip" }
+#  
+#    # Anticipated future default.
+#    unfiltered_cxx_flag: "-no-canonical-prefixes"
+# @@ -165,7 +170,7 @@ toolchain {
+#  
+#    tool_path { name: "ar" path: "/usr/bin/libtool" }
+#    tool_path { name: "compat-ld" path: "/usr/bin/ld" }
+# -  tool_path { name: "cpp" path: "/usr/bin/cpp" }
+# +  tool_path { name: "cpp" path: "/mnt/nfs/home/momeara/opt/bin/cpp" }
+#    tool_path { name: "dwp" path: "/usr/bin/dwp" }
+#    tool_path { name: "gcc" path: "clang/bin/crosstool_wrapper_driver_is_not_gcc" }
+#    cxx_flag: "-std=c++11"
+# @@ -178,7 +183,7 @@ toolchain {
+#    # TODO(ulfjack): This is wrong on so many levels. Figure out a way to auto-detect the proper
+#    # setting from the local compiler, and also how to make incremental builds correct.
+#    cxx_builtin_include_directory: "/"
+# -  tool_path { name: "gcov" path: "/usr/bin/gcov" }
+# +  tool_path { name: "gcov" path: "/mnt/nfs/home/momeara/opt/bin/gcov" }
+#    tool_path { name: "ld" path: "/usr/bin/ld" }
+#    tool_path { name: "nm" path: "/usr/bin/nm" }
+#    tool_path { name: "objcopy" path: "/usr/bin/objcopy" }
+# 
+# diff --git a/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc b/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
+# index 071997c..60e3491 100755
+# --- a/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
+# +++ b/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
+# @@ -47,12 +47,20 @@ import pipes
+#  
+#  # "configure" uses the specific format to substitute the following string.
+#  # If you change it, make sure you modify "configure" as well.
+# -CPU_COMPILER = ('/usr/bin/gcc')
+# -GCC_HOST_COMPILER_PATH = ('/usr/bin/gcc')
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +CPU_COMPILER = ('/mnt/nfs/home/momeara/opt/bin/gcc')
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +# Unofficial setting. DO NOT SUBMIT!!!
+# +GCC_HOST_COMPILER_PATH = ('/mnt/nfs/home/momeara/opt/bin/gcc')
+#  
+#  CURRENT_DIR = os.path.dirname(sys.argv[0])
+#  NVCC_PATH = CURRENT_DIR + '/../../../cuda/bin/nvcc'
+# -LLVM_HOST_COMPILER_PATH = ('/usr/bin/gcc')
+# +LLVM_HOST_COMPILER_PATH = ('/mnt/nfs/home/momeara/opt/bin/gcc')
+#  PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
+
+# additionally, it said it couldn't find some programs in /usr/bin (ld, mn, as), so I symlinked them to /mnt/nfs/home/momeara/opt/bin and that seemd to work
+
