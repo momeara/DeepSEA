@@ -69,6 +69,102 @@ protomers <- plyr::ldply(catalog_short_names, function(catalog_short_name){
 })
 
 system("
+/mnt/nfs/work/momeara/tools/anaconda2/bin/python ../neural-fingerprint/examples/regression.py
+")
+#Loading data...
+#Task params {'target_name': 'measured log solubility in mols per litre', 'data_file': 'delaney.csv'}
+#
+#Starting Morgan fingerprint experiment...
+#Total number of weights in the network: 51401
+#max of weights 0.0853500157894
+#Iteration 0 loss 0.99837822733 train RMSE 2.22062462456 Validation RMSE 0 : 2.05458448503
+#Performance (RMSE) on measured log solubility in mols per litre:
+#		Train: 1.31693033945
+#Test:  1.8043246761
+#--------------------------------------------------------------------------------
+#		Starting neural fingerprint experiment...
+#Total number of weights in the network: 146705
+#max of weights 0.0888696347813
+#Iteration 0 loss 1.00196575873 train RMSE 2.22850395864 Validation RMSE 0 : 2.05687366031
+#Morgan test RMSE: 1.8043246761 Neural test RMSE: 1.65620749318
+
+system("
+/mnt/nfs/work/momeara/tools/anaconda2/bin/python scripts/train_fingerprint_function.py \\
+  --input_data_fname ../neural-fingerprint/examples/delaney.csv \\
+  --output_training_curve_fname data/examples_neural-fingerprint_regression.csv \\
+  --verbose \\
+  --smiles_column smiles \\
+  --target_column \"measured log solubility in mols per litre\" \\
+  --N_train 80 \\
+  --N_validate 20 \\
+  --N_test 20 \\
+  --fp_length 512 \\
+  --fp_depth 4 \\
+  --fp_width 20 \\
+  --h1_size 100 \\
+  --log_l2_penalty -2 \\
+  --num_iters 10 \\
+  --batch_size 100 \\
+  --log_init_scale -4 \\
+  --log_stepsize -6 \\
+  --log_b1 -3 \\
+  --log_b2 -2 \\
+  --fp_normalize \\
+  --nll_func_name neuralfingerprint.util.rmse \\
+  --prediction_layer_sizes 512 100
+")
+
+#Loading data from '../neural-fingerprint/examples/delaney.csv' with
+#	smiles column: 'smiles'
+#	target column: 'measured log solubility in mols per litre'
+#	N_train: 80
+#	N_validate: 20
+#	N_test: 20
+#
+#Building fingerprint function of length 512 as a convolutional network with width 20 and depth 4 ...
+#Building regression network ... 
+#Training model ...
+#Total number of weights in the network: 146705
+#Iteration 0
+#	max of weights: 0.0888696347813
+#	loss 1.00196575873
+#	train neuralfingerprint.util.rmse: 2.22850395864
+#	validation neuralfingerprint.util.rmse: 2.05687366031
+#
+#Performance (neuralfingerprint.util.rmse) on measured log solubility in mols per litre:
+#	Train neuralfingerprint.util.rmse: 1.78475630172
+#	Validation neuralfingerprint.util.rmse: 1.39832185263
+#--------------------------------------------------------------------------------
+
+system("
+/mnt/nfs/work/momeara/tools/anaconda2/bin/python scripts/train_fingerprint_function-tensorflow.py \\
+  --input_data_fname ../neural-fingerprint/examples/delaney.csv \\
+  --output_training_curve_fname data/examples_neural-fingerprint_regression.csv \\
+  --verbose \\
+  --smiles_column smiles \\
+  --target_column \"measured log solubility in mols per litre\" \\
+  --N_train 80 \\
+  --N_validate 20 \\
+  --N_test 20 \\
+  --fp_length 512 \\
+  --fp_depth 4 \\
+  --fp_width 20 \\
+  --l2_penalty .01 \\
+  --l1_penalty 0.0 \\
+  --prediction_layer_sizes 512 100 \\
+  --epochs 1 \\
+  --batch_size 1 \\
+  --log_learning_rate -6 \\
+  --log_b1 -3 \\
+  --log_b2 -2 \\
+  --eval_frequency 10 \\
+  --eval_batch_size 20
+")
+
+
+
+
+system("
 /mnt/nfs/work/momeara/tools/anaconda2/bin/python scripts/train_fingerprint_function.py \\
   --input_data_fname data/hmdbendo_protomers_160606.csv \\
   --output_fp_function_fname data/hmdbendo_protomers_160606_net_charge.fp_func \\
@@ -149,33 +245,26 @@ ggplot2::ggsave("data/hmdbendo_protomers_160606_net_charge.fp_func.curve.pdf")
 #
 
 
+# run on cluster
+
 system("
-/mnt/nfs/work/momeara/tools/anaconda2/bin/python scripts/train_fingerprint_function-tensorflow.py \\
+python scripts/prepare_data.py \\
   --input_data_fname data/hmdbendo_protomers_160606.csv \\
-  --output_fp_function_fname data/hmdbendo_protomers_160606_net_charge.fp_func \\
-  --output_training_curve_fname data/hmdbendo_protomers_160630_net_charge.fp_func.curve \\
-  --verbose \\
+  --output_data_fname data/hmdbendo_protomers_160606_true_mwt.tfrecords \\
   --smiles_column smiles \\
   --target_column true_mwt \\
-  --N_train 6000 \\
-  --N_validate 1000 \\
-  --N_test 1000 \\
-  --fp_length 512 \\
-  --fp_depth 6 \\
-  --fp_width 20 \\
-  --h1_size 100 \\
-  --l2_penalty .01 \\
-  --l1_penalty 0.0 \\
-  --fp_normalize \\
-  --prediction_layer_sizes 512 100 \\
-  --epochs 15 \\
-  --batch_size 10 \\
-  --eval_frequency 100 \\
-  --log_init_scale -4 \\
-  --log_learning_rate -4 \\
-  --log_stepsize -6 \\
-  --log_b1 -3 \\
-  --log_b2 -2
+  --verbose
+")
+
+
+system("
+qlogin -q gpu.q
+bash ~/work/sea/DeepSEA/zinc_regression/scripts/training_runs/tf_hmdb_smiles_true_mwt_1.sh
+")
+
+system("
+python ../tensorflow/tensorflow/tensorflow/tensorboard/tensorboard.py \\
+  --logdir=/scratch/momeara/train_fingerprint_function-tensorflow_hmdbendo_160630
 ")
 
 
