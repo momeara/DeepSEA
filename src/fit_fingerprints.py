@@ -27,15 +27,15 @@ def fit_fingerprints(
 		variables = initialize_variables(model_params)
 
 		train_placeholders = initialize_placeholders()
-		train_fps = build_fp_network(train_placeholders, variables, model_params)
-		train_predictions = build_prediction_network(train_fps, variables, model_params)
+		train_fp = build_fp_network(train_placeholders, variables, model_params)
+		train_predictions = build_prediction_network(train_fp, variables, model_params)
 		train_loss = build_loss_network(
 			train_predictions, train_placeholders, variables, model_params)
 		optimizer = build_optimizer(train_loss, train_params)
 
 		eval_placeholders = initialize_placeholders()
-		eval_fps = build_fp_network(eval_placeholders, variables, model_params)
-		eval_predictions = build_prediction_network(eval_fps, variables, model_params)
+		eval_fp = build_fp_network(eval_placeholders, variables, model_params)
+		eval_predictions = build_prediction_network(eval_fp, variables, model_params)
 
 		train_summary = build_summary_network(train_loss)
 

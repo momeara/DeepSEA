@@ -97,9 +97,6 @@ def initialize_placeholders():
 				dtype=tf.float32,
 				shape=[None, num_bond_features()],
 				name="bond_features")
-			placeholders['atom_list'] = tf.sparse_placeholder(
-				dtype=tf.float32,
-				name="atom_list")
 
 		with tf.name_scope("topology") as topology_scope:
 			for degree in degrees:
@@ -190,35 +187,33 @@ def build_fp_network(placeholders, variables, model_params):
 		num_atom_features = 20
 
 		atom_features: [N_atoms, num_atom_features]
-		atom_list: Sparse[N_compounds, N_atoms]
 
 		hidden: [N_atoms, fp_length]
 		atom_outputs: [N_atoms, fp_length]
-		layer_outputs: [N_compounds, fp_length]
+		layer_outputs: [fp_length]
 		"""
 		with tf.name_scope("layer_{}/".format(layer)) as scope:
 			out_weights = variables['layer_output_weights_{}'.format(layer)]
 			out_bias	= variables['layer_output_bias_{}'.format(layer)]
 			hidden = tf.nn.bias_add(tf.matmul(atom_features, out_weights), out_bias)
 			atom_outputs = tf.nn.softmax(hidden)
-			layer_output = tf.sparse_tensor_dense_matmul(
-				placeholders['atom_list'], atom_outputs, name=scope)
+			layer_output = tf.reduce_sum(atom_outputs, reduction_indices=0)
 			return layer_output
 
 	with tf.name_scope("fingerprint/") as fingerprint_scope:
 		atom_features = placeholders['atom_features']
-		fps = write_to_fingerprint(atom_features, 0, placeholders, variables)
+		fp = write_to_fingerprint(atom_features, 0, placeholders, variables)
 
 		num_hidden_features = [model_params['fp_width']] * model_params['fp_depth']
 		for layer in xrange(len(num_hidden_features)):
 			atom_features = update_layer(atom_features, layer, placeholders, variables)
-			fps += write_to_fingerprint(atom_features, layer+1, placeholders, variables)
+			fp += write_to_fingerprint(atom_features, layer+1, placeholders, variables)
 
-		return fps
+		return fp
 
-def build_prediction_network(fps, variables, model_params):
+def build_prediction_network(fp, variables, model_params):
 	with tf.name_scope("prediction/") as scope:
-		hidden = fps
+		hidden = fp
 		layer_sizes = model_params['prediction_layer_sizes'] + [1]
 		for layer in range(len(layer_sizes) - 1):
 			weights = variables['prediction_weights_{}'.format(layer)]
@@ -264,14 +259,6 @@ def build_feed(smiles, labels, placeholders):
 	feed_dict = {}
 	feed_dict[placeholders['atom_features']] = data['atom_features']
 	feed_dict[placeholders['bond_features']] = data['bond_features']
-
-	indices = []
-	for compound, atoms in enumerate(data['atom_list']):
-		indices += [ [compound, atom] for atom in atoms]
-	indices = np.array(indices, dtype=np.int64)
-	values = np.ones(indices.shape[0], dtype=np.float32)
-	shape = np.array([len(data['atom_list']), len(data['atom_features'])])
-	feed_dict[placeholders['atom_list']] = tf.SparseTensorValue(indices, values, shape)
 
 	for degree in degrees:
 		atom_neighbors = data[('atom_neighbors', degree)]
