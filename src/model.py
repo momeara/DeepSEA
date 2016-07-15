@@ -2,8 +2,10 @@
 # -*- tab-width:4;indent-tabs-mode:f;show-trailing-whitespace:t;rm-trailing-spaces:t -*-
 # vi: set ts=4 et sw=4:
 
-# adapt neural-fingeprint/examples/regression.py
+
+# adapt neural-fingeprint to tensorflow
 # to fit fingerprints based on a single endpoint regression
+
 
 from __future__ import absolute_import
 from __future__ import division
@@ -11,10 +13,6 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-import sys
-import time
-import subprocess
-from argparse import ArgumentParser
 import numpy as np
 import tensorflow as tf
 from neuralfingerprint import load_data
@@ -23,15 +21,6 @@ from neuralfingerprint.features import num_atom_features, num_bond_features
 from neuralfingerprint.mol_graph import degrees
 from neuralfingerprint.build_convnet import array_rep_from_smiles
 
-
-def normalize_array(A):
-	mean, std = np.mean(A), np.std(A)
-	def norm_fn(X): return (X - mean) / std
-	def restore_fn(X): return X * std + mean
-	return norm_fn, restore_fn
-
-def rmse(predictions, labels):
-	return np.sqrt(np.mean((labels - predictions)**2))
 
 
 def initialize_variables(model_params):
@@ -319,220 +308,3 @@ def eval_in_batches(sess, smiles, eval_predictions, eval_placeholders, train_par
 			batch_predictions = sess.run(eval_predictions, feed_dict=feed_dict)
 			predictions[begin:] = batch_predictions[begin - size:]
 	return predictions
-
-
-
-def fit_fingerprints(
-	task_params,
-	model_params,
-	train_params,
-	verbose):
-
-	if verbose:
-		print("Building fingerprint function of length {fp_length} as a convolutional network with width {fp_width} and depth {fp_depth} ...".format(**model_params))
-
-	with tf.device(task_params['device']):
-		variables = initialize_variables(model_params)
-
-		train_placeholders = initialize_placeholders()
-		train_fps = build_fp_network(train_placeholders, variables, model_params)
-		train_predictions = build_prediction_network(train_fps, variables, model_params)
-		train_loss = build_loss_network(
-			train_predictions, train_placeholders, variables, model_params)
-		optimizer = build_optimizer(train_loss, train_params)
-
-		eval_placeholders = initialize_placeholders()
-		eval_fps = build_fp_network(eval_placeholders, variables, model_params)
-		eval_predictions = build_prediction_network(eval_fps, variables, model_params)
-
-		train_summary = build_summary_network(train_loss)
-
-	if verbose:
-		print("Loading data from '{data_fname}' with\n\tsmiles column: '{smiles_column}'\n\ttarget column: '{target_column}'\n\tN_train: {N_train}\n\tN_validate: {N_validate}\n\tN_test: {N_test}\n".format(**task_params))
-
-	data = load_data(
-		filename=task_params['data_fname'],
-		sizes=(task_params['N_train'], task_params['N_validate'], task_params['N_test']),
-		input_name=task_params['smiles_column'],
-		target_name=task_params['target_column'])
-
-	train_smiles, train_labels = data[0]
-	eval_smiles, eval_labels = data[1]
-	test_smiles, test_labels = data[2]
-	norm_fn, restore_norm_fn = normalize_array(train_labels)
-
-	if verbose:
-		print("Begin Tensorflow session ...")
-	start_time = time.time()
-
-
-	training_loss_curve = []
-	training_rmse_curve = []
-	validation_rmse_curve = []
-
-	session_config = tf.ConfigProto(
-		allow_soft_placement=True,
-		log_device_placement=True)
-
-	with tf.Session(config=session_config) as sess:
-		sess.run(tf.initialize_all_variables())
-
-		train_writer = tf.train.SummaryWriter(task_params['summaries_dir'] + '/train', sess.graph)
-		test_writer = tf.train.SummaryWriter(task_params['summaries_dir'] + '/test')
-
-		n_batches = int(train_params['epochs'] * task_params['N_train']) // train_params['batch_size']
-		for step in xrange(n_batches):
-			# Compute the offset of the current minibatch in the data.
-			# Note that we could use better randomization across epochs.
-			offset = (step * train_params['batch_size']) % \
-					 (task_params['N_train'] - train_params['batch_size'])
-			batch_smiles = train_smiles[offset:(offset + train_params['batch_size']), ...]
-			batch_labels = train_labels[offset:(offset + train_params['batch_size'])]
-			batch_normed_labels = norm_fn(batch_labels)
-
-			feed_dict = build_feed(batch_smiles, batch_normed_labels, train_placeholders)
-
-			_, loss, predictions, summary = sess.run(
-				fetches=[optimizer, train_loss, train_predictions, train_summary],
-				feed_dict=feed_dict)
-
-			training_loss_curve += [loss]
-			train_rmse = rmse(restore_norm_fn(predictions), batch_labels)
-			training_rmse_curve += [train_rmse]
-
-			test_writer.add_summary(summary, step)
-
-
-			if step % train_params['eval_frequency'] == 0:
-
-#				run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-#				run_metadata = tf.RunMetadata()
-#				summary, _ = sess.run(
-#					[train_summary, optimizer],
-#					feed_dict=feed_dict(True),
-#					options=run_options,
-#					run_metadata=run_metadata)
-#				train_writer.add_run_metadata(run_metadata, 'step%d' % i)
-#				train_writer.add_summary(summary, i)
-
-				elapsed_time = time.time() - start_time
-				start_time = time.time()
-				print('Minibatch loss: %.3f' % (loss))
-				print('Step %d (epoch %.2f), %.1f ms' %
-					(step, float(step) * train_params['batch_size'] / task_params['N_train'],
-					1000 * elapsed_time / train_params['eval_frequency']))
-				print('Minibatch RMSE: %.1f' % train_rmse)
-
-				with tf.device(task_params['device']):
-				   validation_predictions = eval_in_batches(
-					   sess, eval_smiles, eval_predictions, eval_placeholders, train_params)
-				validation_rmse = rmse(restore_norm_fn(validation_predictions), eval_labels)
-				validation_rmse_curve += [validation_rmse]
-				print('Validation RMSE: %.1f' % validation_rmse)
-				print("")
-			else:
-				validation_rmse_curve += [None]
-
-		test_predictions = eval_in_batches(
-			sess, test_smiles, eval_predictions, eval_placeholders, train_params)
-		test_RMSE = rmse(restore_norm_fn(test_predictions), test_labels)
-		print('Test RMSE: %.1f' % test_RMSE)
-
-		if verbose:
-			print("Complete returning ... ")
-
-		return training_loss_curve, training_rmse_curve, validation_rmse_curve
-
-
-def main(args=sys.argv[1:], stdout=sys.stdout, stderr=sys.stderr):
-	parser = ArgumentParser("Train a neural fingerprint function")
-
-	# paths etc.
-	parser.add_argument("--input_data_fname", help="Comma separated value file of substance activity data. After a header row, each row represents a substance and having columns identified by --smiles_column and --activity_column", default="data.csv")
-#	parser.add_argument("--output_fp_function_fname", help="Name of fingerprint function output file", default="fp_function.pickle")
-	parser.add_argument("--summaries_dir", help="Name of directory where summary data should be deposited", default="logs")
-	parser.add_argument("--output_training_curve_fname", help="Name of training curve output file", default="training_curve.tsv")
-	parser.add_argument("--verbose", default=False, action='store_true', help="Report verbose output")
-
-	#task_params
-	parser.add_argument("--smiles_column", help="Name of substance smiles column.", default="smiles")
-	parser.add_argument("--target_column", help="Name of substance target column.", default="target")
-	parser.add_argument("--N_train", help="Number of substance to use for model training.", default=80, type=int)
-	parser.add_argument("--N_validate", help="Number of substances to use for model validation.", default=20, type=int)
-	parser.add_argument("--N_test", help="Number of substances to use for model testing.", default=20, type=int)
-	parser.add_argument("--device", help="Specify the device to use.", default='cpu:0')
-#	parser.add_argument("--seed", help="Random seed used in training.", default=0, type=int)
-
-
-	# model params
-	parser.add_argument("--fp_length", help="Number of elements in the fingerprint vector", default=512, type=int)
-	parser.add_argument("--fp_depth", help="Depth of fingerprint neural network", default=4, type=int)
-	parser.add_argument("--fp_width", help="Width of fingerprint neural network", default=20, type=int)
-	parser.add_argument("--h1_size", help="Size of hidden layer of network on top of fingerprints", default=100, type=int)
-	parser.add_argument("--l2_penalty", help="scale of l2 regularization factor for loss in neural network", default=.01, type=float)
-	parser.add_argument("--l1_penalty", help="scale of l1 regularization factor for loss in neural network", default=0.0, type=float)
-	parser.add_argument("--prediction_layer_sizes", help="vector of layer sizes for fingerprint neural network", default=[512, 100], type=int, nargs='+')
-
-	# train params
-	parser.add_argument("--epochs", help="Number of training epochs", default = 10, type=int)
-	parser.add_argument("--batch_size", help="Training data batch size", default=100, type=int)
-	parser.add_argument("--eval_batch_size", help="Batch size when evluating performance", default=64, type=int)
-	parser.add_argument("--eval_frequency", help="How often to evaluate performance", default=10, type=int)
-#	parser.add_argument("--log_init_scale", help="Training log initial scale", default=-4, type=float)
-	parser.add_argument("--log_learning_rate", help="Training log learning rate", default=-6, type=float)
-	parser.add_argument("--log_b1", help="Training log Adam optimizer parameter b1", default=-3, type=float)
-	parser.add_argument("--log_b2", help="Training log Adam optimizer parameter b2", default=-2, type=float)
-
-	params, others = parser.parse_known_args(args)
-
-	task_params = dict(
-		data_fname = params.input_data_fname,
-		summaries_dir = params.summaries_dir,
-		N_train = params.N_train,
-		N_validate = params.N_validate,
-		N_test = params.N_test,
-		smiles_column = params.smiles_column,
-		target_column = params.target_column,
-		device = params.device)
-#		seed = params.seed)
-
-	model_params = dict(
-		fp_length = params.fp_length,
-		fp_depth = params.fp_depth,
-		fp_width = params.fp_width,
-		h1_size = params.h1_size,
-		l2_penalty = params.l2_penalty,
-		l1_penalty = params.l1_penalty,
-		prediction_layer_sizes = params.prediction_layer_sizes)
-#		nll_func_name = params.nll_func_name,
-#		nll_func = load_nll_func(params.nll_func_name),
-
-
-	print("GIT REVISION: {}".format(subprocess.check_output(['git', 'rev-parse', 'HEAD'])))
-
-	train_params = dict(
-		epochs = params.epochs,
-		batch_size = params.batch_size,
-		eval_batch_size = params.eval_batch_size,
-		eval_frequency = params.eval_frequency,
-#		log_init_scale = params.log_init_scale,
-		log_learning_rate = params.log_learning_rate,
-		log_b1 = params.log_b1,
-		log_b2 = params.log_b2)
-
-
-	curves = \
-		fit_fingerprints(
-			task_params=task_params,
-			model_params=model_params,
-			train_params=train_params,
-			verbose=params.verbose)
-
-	with open(params.output_training_curve_fname, 'w') as f:
-		f.write("train_loss,train_rmse,validation_rmse\n")
-		[f.write("{},{},{}\n".format(train_loss, train_rmse, validation_rmse)) for train_loss,train_rmse, validation_rmse in zip(curves[0], curves[1], curves[2])]
-
-
-if __name__ == '__main__':
-	sys.exit(main(args=sys.argv[1:], stdout=sys.stdout, stderr=sys.stderr))
-

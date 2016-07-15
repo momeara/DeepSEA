@@ -34,14 +34,22 @@ def prepare_data(task_params, verbose=False):
 
     		smiles = getattr(row, task_params['smiles_column'])
     		label = getattr(row, task_params['target_column'])
-            graph = graph_from_smiles(smiles)
-            example = tf.train.Example(
-                features = tf.train.Features(
-                    feature = {
-                        'label': tf.train.Feature(float_list = tf.train.FloatList(value=[label])),
-                        'graph': tf.train.Feature(
-    						bytes_list = tf.train.BytesList(value=pickle.dumps(graph))),
-                }))
+            molgraph = graph_from_smiles(smiles)
+			feature = {
+				'label': tf.train.Feature(float_list = tf.train.FloatList(value=[label])),
+				'atom_features': tf.train.Feature(
+						int64_list = tf.train.Int64List(value=molgraph.feature_array('atom'))),
+				'bond_features': tf.train.Feature(
+						int64_list = tf.train.Int64List(value=molgraph.feature_array('bond')))}
+			for degree in degrees:
+				features['atom_neighbors_{}'.format(degree)] = tf.train.Feature(
+					int64_list = tf.train.Int64List(
+						value=np.array(molgraph.neighbor_list(('atom', degree), 'atom'), dtype=int)))
+				features['bond_neighbors_{}'.format(degree)] = tf.train.Feature(
+					int64_list = tf.train.Int64List(
+						value=np.array(molgraph.neighbor_list(('atom', degree), 'bond'), dtype=int)))
+
+            example = tf.train.Example(features = tf.train.Features(features))
             example_serialized = example.SerializeToString()
             writer.write(example_serialized)
 
