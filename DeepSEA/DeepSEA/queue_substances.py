@@ -23,7 +23,7 @@ n_bond_features = num_bond_features()
 
 
 
-def smiles_to_flat_substances(smiles, batch_size):
+def smiles_to_flat_substances_network(smiles, eval_params):
     """Prepare a batch of substances from smiles strings
 
     smiles should be a 1d tensor of smiles strings
@@ -47,7 +47,7 @@ def smiles_to_flat_substances(smiles, batch_size):
                 data[('bond_neighbors', degree)].shape = (0,0)
 
         return [
-            substance_atoms.shape[0],                                                     
+            substance_atoms.shape[0],    
             data['atom_features'].astype(np.float32),
             data['bond_features'].astype(np.float32),
             substance_atoms] + \
@@ -80,7 +80,7 @@ def smiles_to_flat_substances(smiles, batch_size):
 
     substance_atom_indices = flat_substances_batch_list[3]
     substance_atom_values = tf.fill(tf.expand_dims(tf.to_int32(n_atoms), 0), 1.0)
-    substance_atom_shape = [batch_size, n_atoms]
+    substance_atom_shape = [eval_params['batch_size'], n_atoms]
     flat_substances_batch['substance_atoms'] = tf.SparseTensor(
         substance_atom_indices,
         substance_atom_values,
@@ -104,13 +104,12 @@ def smiles_to_flat_substances(smiles, batch_size):
     return flat_substances_batch
 
 
-def train_substances_network(train_params, task_params):
-
+def smiles_labels_batch_queue(eval_params):
     fname_queue = tf.train.string_input_producer(
-        [task_params['train_substances_fname']],
+        [eval_params['substances_fname']],
         num_epochs=None,
         shuffle=True,
-        name="substance_file_name_queue")
+        name="substances_fname_queue")
     
     reader = tf.TextLineReader(
         skip_header_lines=1,
@@ -119,67 +118,14 @@ def train_substances_network(train_params, task_params):
     substance_id, smiles, label = tf.decode_csv(
         records=record,
         record_defaults=[[""], [""], [1.0]],
-        field_delim=task_params['train_substances_field_delim'])
-    substances_batch, labels_batch = tf.train.shuffle_batch(
+        field_delim=eval_params['substances_field_delim'])
+    smiles_batch, labels_batch = tf.train.shuffle_batch(
         tensors = [smiles, label],
-        batch_size = train_params['train_substances_batch_size'],
-        capacity = train_params['train_substances_queue_capacity'],
-        min_after_dequeue = train_params['train_substances_queue_min_after_dequeue'],
-        num_threads = train_params['train_substances_queue_num_threads'],
-        seed = train_params['train_substances_queue_seed'])
-    flat_substances_batch = smiles_to_flat_substances(substances_batch, train_params['train_substances_batch_size'])
-
-    return flat_substances_batch, labels_batch
+        batch_size = eval_params['batch_size'],
+        capacity = eval_params['queue_capacity'],
+        min_after_dequeue = eval_params['queue_min_after_dequeue'],
+        num_threads = eval_params['queue_num_threads'],
+        seed = eval_params['queue_seed'])
+    return smiles_batch, labels_batch
 
 
-def validate_substances_network(train_params, task_params):
-
-    fname_queue = tf.train.string_input_producer(
-        [task_params['validate_substances_fname']],
-        num_epochs=None,
-        shuffle=True,
-        name="substance_file_name_queue")
-    
-    reader = tf.TextLineReader(
-        skip_header_lines=1,
-        name="substance_file_reader")
-    _, record = reader.read(queue=fname_queue)
-    substance_id, smiles, label = tf.decode_csv(
-        records=record,
-        record_defaults=[[""], [""], [1.0]],
-        field_delim=task_params['validate_substances_field_delim'])
-    substances_batch, labels_batch = tf.train.shuffle_batch(
-        tensors = [smiles, label],
-        batch_size = train_params['validate_substances_batch_size'],
-        capacity = train_params['validate_substances_queue_capacity'],
-        min_after_dequeue = train_params['validate_substances_queue_min_after_dequeue'],
-        num_threads = train_params['validate_substances_queue_num_threads'],
-        seed = train_params['validate_substances_queue_seed'])
-    flat_substances_batch = smiles_to_flat_substances(substances_batch, train_params['validate_substances_batch_size'])
-
-    return flat_substances_batch, labels_batch
-
-
-def test_substances_network(train_params, task_params):
-
-    fname_queue = tf.train.string_input_producer(
-        [task_params['test_substances_fname']],
-        num_epochs=None,
-        shuffle=True)
-    
-    reader = tf.TextLineReader(skip_header_lines=1)
-    _, record = reader.read(queue=fname_queue)
-    substance_id, smiles, label = tf.decode_csv(
-        records=record,
-        record_defaults=[[""], [""], [1.0]],
-        field_delim=task_params['test_substances_field_delim'])
-    substances_batch, labels_batch = tf.train.shuffle_batch(
-        tensors = [smiles, label],
-        batch_size = train_params['test_substances_batch_size'],
-        capacity = train_params['test_substances_queue_capacity'],
-        min_after_dequeue = train_params['test_substances_queue_min_after_dequeue'],
-        num_threads = train_params['test_substances_queue_num_threads'],
-        seed = train_params['test_substances_queue_seed'])
-    flat_substances_batch = smiles_to_flat_substances(substances_batch, train_params['test_substances_batch_size'])
-
-    return flat_substances_batch, labels_batch

@@ -17,15 +17,14 @@ from DeepSEA.util import (
 )
 
 from DeepSEA.queue_substances import (
-	train_substances_network,
-	validate_substances_network,
-	test_substances_network,
+	smiles_labels_batch_queue,
+	smiles_to_flat_substances_network,
 )
 
 from DeepSEA.model import (
 	initialize_variables,
 	build_summary_network,
-	build_fps_network,
+	build_neural_fps_network,
 	build_normed_prediction_network,
 	build_loss_network,
 	build_optimizer,
@@ -53,7 +52,9 @@ def eval_in_batches(sess, coord, threads, predictions, labels, n_batches):
 def fit_fingerprints(
 	task_params,
 	model_params,
-	train_params):
+	train_params,
+	validate_params,
+	test_params):
 
 	if task_params['verbose']:
 		print("Building fingerprint function of length {fp_length} as a convolutional network with width {fp_width} and depth {fp_depth} ...".format(**model_params))
@@ -61,33 +62,39 @@ def fit_fingerprints(
 	with tf.device(task_params['device']):
 		variables = initialize_variables(train_params, model_params)
 
-		train_substances, train_labels = train_substances_network(train_params, task_params)
-		train_fps = build_fps_network(train_substances, variables, model_params)
+		train_smiles, train_labels = smiles_labels_batch_queue(train_params)
+		train_substances = smiles_to_flat_substances_network(train_smiles, train_params)
+		train_fps = build_neural_fps_network(train_substances, variables, model_params)
 		train_normed_predictions = build_normed_prediction_network(
 			train_fps, variables, model_params)
 		train_predictions, train_loss = build_loss_network(
 			train_normed_predictions, train_labels, variables, model_params)
 		optimizer = build_optimizer(train_loss, train_params)
+		train_summary = build_summary_network(train_loss)
 
-		validate_substances, validate_labels = validate_substances_network(train_params, task_params)
-		validate_fps = build_fps_network(validate_substances, variables, model_params)
+		validate_smiles, validate_labels = smiles_labels_batch_queue(validate_params)
+		validate_substances = smiles_to_flat_substances_network(
+			validate_smiles, validate_params)
+		validate_fps = build_neural_fps_network(
+			validate_substances, variables, model_params)
 		validate_normed_predictions = build_normed_prediction_network(
 			validate_fps, variables, model_params)
 		validate_predictions, validate_loss = build_loss_network(
 			validate_normed_predictions, validate_labels, variables, model_params)
 
-		test_substances, test_labels = test_substances_network(train_params, task_params)
-		test_fps = build_fps_network(test_substances, variables, model_params)
+		test_smiles, test_labels = smiles_labels_batch_queue(test_params)
+		test_substances = smiles_to_flat_substances_network(test_smiles, test_params)
+		test_fps = build_neural_fps_network(test_substances, variables, model_params)
 		test_normed_predictions = build_normed_prediction_network(
 			test_fps, variables, model_params)
 		test_predictions, test_loss = build_loss_network(
 			test_normed_predictions, test_labels, variables, model_params)
 
 
-		train_summary = build_summary_network(train_loss)
-
 	if task_params['verbose']:
-		print("Loading data from '{train_substances_fname}'\n".format(**task_params))
+		print("Queuing training data from '{substances_fname}'\n".format(**train_params))
+		print("Queuing validation data from '{substances_fname}'\n".format(**validate_params))
+		print("Queuing test data from '{substances_fname}'\n".format(**test_params))
 
 	if task_params['verbose']:
 		print("Begin Tensorflow session ...")
@@ -115,7 +122,7 @@ def fit_fingerprints(
 		test_writer = tf.train.SummaryWriter(task_params['summaries_dir'] + '/test')
 
 		try:
-			for train_step in xrange(train_params['train_substances_n_batches']):
+			for train_step in xrange(train_params['n_batches']):
 				if coord.should_stop(): break
 
 				_, loss, predictions, labels, summary = sess.run(
@@ -126,12 +133,12 @@ def fit_fingerprints(
 				training_rmse_curve += [train_rmse]
 				test_writer.add_summary(summary, train_step)
 
-				if train_step % train_params['validate_frequency'] == 0:
+				if train_step % validate_params['validate_frequency'] == 0:
 
 					elapsed_time = time.time() - start_time
 					start_time = time.time()
 					print('Minibatch %d: %.1f ms' %
-						(train_step, 1000 * elapsed_time / train_params['validate_frequency']))
+						(train_step, 1000 * elapsed_time / validate_params['validate_frequency']))
 					print('Minibatch loss: %.3f' % (loss))
 					print('Minibatch RMSE: %.1f' % train_rmse)
 
@@ -139,7 +146,7 @@ def fit_fingerprints(
 						validate_predictions_eval, validate_labels_eval = eval_in_batches(
 							sess, coord, threads,
 							validate_predictions, validate_labels,
-							train_params['validate_substances_n_batches'])
+							validate_params['n_batches'])
 
 					validate_rmse = rmse(validate_predictions_eval, validate_labels_eval)
 					validate_rmse_curve += [validate_rmse]
@@ -154,7 +161,7 @@ def fit_fingerprints(
 			test_predictions_eval, test_labels_eval = eval_in_batches(
 				sess, coord, threads,
 				test_predictions, test_labels,
-				train_params['test_substances_n_batches'])
+				test_params['n_batches'])
 
 		test_rmse = rmse(test_predictions_eval, test_labels_eval)
 		print('Test RMSE: %.1f' % test_rmse)

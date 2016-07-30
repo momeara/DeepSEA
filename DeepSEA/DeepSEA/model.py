@@ -93,7 +93,28 @@ def build_summary_network(loss):
 	return summaries
 
 
-def build_fps_network(substances, variables, model_params):
+def build_morgan_fps_network(smiles, batch_size, model_params):
+	def smiles_to_fps(smiles_tuple):
+		fps = []
+		for smiles in smiles_tuple:
+			molecule = Chem.MolFromSmiles(smiles)
+			fp = AllChem.GetMorganFingerprintAsBitVect(
+				molecule, model_params['fp_radius'], nBits=model_params['fp_length'])
+			fps.append(fp.ToBitString())
+		fps = np.array(fps)
+		fps = np.array([list(fp) for fp in fps], dtype=int)
+
+	morgan_fps_list = tf.py_func(
+		func=smiles_to_fps,
+		inp=[smiles],
+		Tout=[tf.int64])
+
+	morgan_fps = morgan_fps_list[0]
+	morgan_fps.set_shape([batch_size, model_params['fp_length']])
+	return morgan_fps
+
+
+def build_neural_fps_network(substances, variables, model_params):
 
 	def matmult_neighbors(atom_features, layer, substances, variables):
 		"""
