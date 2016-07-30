@@ -22,6 +22,26 @@ from neuralfingerprint import load_data
 from neuralfingerprint.mol_graph import graph_from_smiles
 
 
+def smiles_label_to_tfrecord(smiles, label):
+    molgraph = graph_from_smiles(smiles)
+    feature = {
+    	'label': tf.train.Feature(float_list = tf.train.FloatList(value=[label])),
+    	'atom_features': tf.train.Feature(
+    			int64_list = tf.train.Int64List(value=molgraph.feature_array('atom'))),
+    	'bond_features': tf.train.Feature(
+    			int64_list = tf.train.Int64List(value=molgraph.feature_array('bond')))}
+    for degree in degrees:
+    	features['atom_neighbors_{}'.format(degree)] = tf.train.Feature(
+    		int64_list = tf.train.Int64List(
+    			value=np.array(molgraph.neighbor_list(('atom', degree), 'atom'), dtype=int)))
+    	features['bond_neighbors_{}'.format(degree)] = tf.train.Feature(
+    		int64_list = tf.train.Int64List(
+    			value=np.array(molgraph.neighbor_list(('atom', degree), 'bond'), dtype=int)))
+
+    example = tf.train.Example(features = tf.train.Features(features))
+    example_serialized = example.SerializeToString()
+
+
 
 def prepare_data(task_params, verbose=False):
 
@@ -34,23 +54,7 @@ def prepare_data(task_params, verbose=False):
 
     		smiles = getattr(row, task_params['smiles_column'])
     		label = getattr(row, task_params['target_column'])
-            molgraph = graph_from_smiles(smiles)
-			feature = {
-				'label': tf.train.Feature(float_list = tf.train.FloatList(value=[label])),
-				'atom_features': tf.train.Feature(
-						int64_list = tf.train.Int64List(value=molgraph.feature_array('atom'))),
-				'bond_features': tf.train.Feature(
-						int64_list = tf.train.Int64List(value=molgraph.feature_array('bond')))}
-			for degree in degrees:
-				features['atom_neighbors_{}'.format(degree)] = tf.train.Feature(
-					int64_list = tf.train.Int64List(
-						value=np.array(molgraph.neighbor_list(('atom', degree), 'atom'), dtype=int)))
-				features['bond_neighbors_{}'.format(degree)] = tf.train.Feature(
-					int64_list = tf.train.Int64List(
-						value=np.array(molgraph.neighbor_list(('atom', degree), 'bond'), dtype=int)))
-
-            example = tf.train.Example(features = tf.train.Features(features))
-            example_serialized = example.SerializeToString()
+			example_serialized = smiles_label_to_tfrecord(smiles, label)
             writer.write(example_serialized)
 
 def main(args=sys.argv[1:], stdout=sys.stdout, stderr=sys.stderr):

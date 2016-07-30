@@ -245,6 +245,22 @@ ggplot2::ggsave("data/hmdbendo_protomers_160606_net_charge.fp_func.curve.pdf")
 #
 
 
+x <- readr::read_csv("data/hmdbendo_protomers_160606.csv") %>%
+	dplyr::select(
+		zinc_id,
+		smiles = smiles,
+		true_mwt)
+x %>%
+	dplyr::slice(1:6000) %>%
+	readr::write_tsv("data/hmdbendo_protomers_train_160606.tsv")
+x %>%
+	dplyr::slice(6001:8000) %>%
+	readr::write_tsv("data/hmdbendo_protomers_validate_160606.tsv")
+x %>%
+	dplyr::slice(8001:10800) %>%
+	readr::write_tsv("data/hmdbendo_protomers_test_160606.tsv")
+
+
 # run on cluster
 
 system("
@@ -279,3 +295,6 @@ ggplot2::ggplot(loss_curve) + ggplot2::theme_bw() +
 	ggplot2::scale_y_continuous("RMSE")
 ggplot2::ggsave("data/hmdbendo_protomers_160630_net_charge.fp_func.curve.pdf", height=4, width=10)
 ggplot2::ggsave("data/hmdbendo_protomers_160630_net_charge.fp_func.curve.png", height=4, width=10)
+
+
+
