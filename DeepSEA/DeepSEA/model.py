@@ -14,6 +14,8 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
+import rdkit.Chem as Chem
+from rdkit.Chem import AllChem
 import tensorflow as tf
 from neuralfingerprint import load_data
 from neuralfingerprint.build_convnet import array_rep_from_smiles
@@ -38,39 +40,40 @@ def initialize_variables(training_params, model_params):
 			variables['l2_loss'] += tf.nn.l2_loss(weights)
 			variables['l1_loss'] += tf.reduce_sum(tf.abs(weights))
 
-	with tf.name_scope("fingerprint") as scope:
-		# neural fingerprint layer output weights and biases
-		all_layer_sizes = [num_atom_features()] + [model_params['fp_width']] * model_params['fp_depth']
-		for layer in range(len(all_layer_sizes)):
-			with tf.name_scope("layer_{}".format(layer)):
-				add_weights(
-					'layer_output_weights_{}'.format(layer),
-					[all_layer_sizes[layer], model_params['fp_length']])
+	if model_params['fp_type'] == 'neural':
+		with tf.name_scope("fingerprint") as scope:
+			# neural fingerprint layer output weights and biases
+			all_layer_sizes = [num_atom_features()] + [model_params['fp_width']] * model_params['fp_depth']
+			for layer in range(len(all_layer_sizes)):
+				with tf.name_scope("layer_{}".format(layer)):
+					add_weights(
+						'layer_output_weights_{}'.format(layer),
+						[all_layer_sizes[layer], model_params['fp_length']])
 
-				add_weights(
-					'layer_output_bias_{}'.format(layer),
-					[model_params['fp_length']])
+					add_weights(
+						'layer_output_bias_{}'.format(layer),
+						[model_params['fp_length']])
 
-		 # neural fingerprint graph integration layer weights and biases
-		in_and_out_sizes = zip(all_layer_sizes[:-1], all_layer_sizes[1:])
-		for layer, (N_prev, N_cur) in enumerate(in_and_out_sizes):
-			with tf.name_scope("layer_{}/".format(layer)) as layer_scope:
-				 add_weights(
-					 "layer_{}_biases".format(layer),
-					 [N_cur])
-
-				 add_weights(
-					 "layer_{}_self_filter".format(layer),
-					 [N_prev, N_cur])
-
-				 add_weights(
-					 "layer_{}_neighbor_filter".format(layer),
-					 [N_prev + num_bond_features(), N_cur])
-
-				 for degree in degrees:
+			 # neural fingerprint graph integration layer weights and biases
+			in_and_out_sizes = zip(all_layer_sizes[:-1], all_layer_sizes[1:])
+			for layer, (N_prev, N_cur) in enumerate(in_and_out_sizes):
+				with tf.name_scope("layer_{}/".format(layer)) as layer_scope:
 					 add_weights(
-						 'layer_{}_neighbor_{}_filter'.format(layer, degree),
-						[N_prev + num_bond_features(), N_cur])
+						 "layer_{}_biases".format(layer),
+						 [N_cur])
+
+					 add_weights(
+						 "layer_{}_self_filter".format(layer),
+						 [N_prev, N_cur])
+
+					 add_weights(
+						 "layer_{}_neighbor_filter".format(layer),
+						 [N_prev + num_bond_features(), N_cur])
+
+					 for degree in degrees:
+						 add_weights(
+							 'layer_{}_neighbor_{}_filter'.format(layer, degree),
+							[N_prev + num_bond_features(), N_cur])
 
 	with tf.name_scope("prediction") as scope:
 		# prediction network weights and biases
@@ -93,25 +96,6 @@ def build_summary_network(loss):
 	return summaries
 
 
-def build_morgan_fps_network(smiles, batch_size, model_params):
-	def smiles_to_fps(smiles_tuple):
-		fps = []
-		for smiles in smiles_tuple:
-			molecule = Chem.MolFromSmiles(smiles)
-			fp = AllChem.GetMorganFingerprintAsBitVect(
-				molecule, model_params['fp_radius'], nBits=model_params['fp_length'])
-			fps.append(fp.ToBitString())
-		fps = np.array(fps)
-		fps = np.array([list(fp) for fp in fps], dtype=int)
-
-	morgan_fps_list = tf.py_func(
-		func=smiles_to_fps,
-		inp=[smiles],
-		Tout=[tf.int64])
-
-	morgan_fps = morgan_fps_list[0]
-	morgan_fps.set_shape([batch_size, model_params['fp_length']])
-	return morgan_fps
 
 
 def build_neural_fps_network(substances, variables, model_params):
@@ -207,6 +191,28 @@ def build_neural_fps_network(substances, variables, model_params):
 			fps += write_to_fingerprint(atom_features, layer+1, substances, variables)
 
 		return fps
+
+def build_morgan_fps_network(smiles, eval_params, model_params):
+	def smiles_to_fps(smiles_tuple):
+		fps = []
+		for smiles in smiles_tuple:
+			molecule = Chem.MolFromSmiles(smiles)
+			fp = AllChem.GetMorganFingerprintAsBitVect(
+				molecule, model_params['fp_radius'], nBits=model_params['fp_length'])
+			fps.append(fp.ToBitString())
+		fps = np.array(fps)
+		fps = np.array([list(fp) for fp in fps], dtype=np.float32)
+		return fps
+
+	morgan_fps_list = tf.py_func(
+		func=smiles_to_fps,
+		inp=[smiles],
+		Tout=[tf.float32])
+
+	morgan_fps = morgan_fps_list[0]
+	morgan_fps.set_shape([eval_params['batch_size'], model_params['fp_length']])
+	return morgan_fps
+
 
 def build_normed_prediction_network(fps, variables, model_params):
 	with tf.name_scope("prediction/") as scope:
