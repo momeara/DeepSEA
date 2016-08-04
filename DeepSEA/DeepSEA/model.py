@@ -26,20 +26,31 @@ from DeepSEA.rdkit_util import (
 	smiles_to_fps,
 )
 
+
 def initialize_variables(train_params, model_params):
 	variables = {}
 	with tf.name_scope("regularization") as scope:
 		variables['l2_loss'] = tf.constant(0.0, name="l2_loss")
 		variables['l1_loss'] = tf.constant(0.0, name="l1_loss")
+		variables['n_params'] = {'fingerprint' : 0, 'prediction' : 0}
 
 
-	def add_weights(weight_key, shape, op=tf.random_normal):
+	def add_weights(collection, weight_key, shape, op=tf.random_normal):
 		weights = tf.Variable(
-			op(shape, stddev=np.exp(train_params['log_init_scale'])), name=weight_key)
+			initial_value=op(shape, stddev=np.exp(train_params['log_init_scale'])),
+			collections=[tf.GraphKeys.VARIABLES, tf.GraphKeys.TRAINABLE_VARIABLES, collection],
+			name=weight_key)
 		variables[weight_key] = weights
 		with tf.name_scope("regularization/") as regularization_scope:
 			variables['l2_loss'] += tf.nn.l2_loss(weights)
 			variables['l1_loss'] += tf.reduce_sum(tf.abs(weights))
+			# to be consistent with neuralfingerprint, the
+			# regularization the mean of squares or absolute values
+			# rather than the sum. So we need to keep track of how
+			# many variables there are to divide by before applying it
+			# to the loss.
+			variables['n_params'][collection] += np.prod(shape)
+
 
 	if model_params['fp_type'] == 'neural':
 		with tf.name_scope("fingerprint") as scope:
@@ -48,41 +59,48 @@ def initialize_variables(train_params, model_params):
 			for layer in range(len(all_layer_sizes)):
 				with tf.name_scope("layer_{}".format(layer)):
 					add_weights(
-						'layer_output_weights_{}'.format(layer),
-						[all_layer_sizes[layer], model_params['fp_length']])
+						collection = 'fingerprint',
+						weight_key = 'layer_output_weights_{}'.format(layer),
+						shape = [all_layer_sizes[layer], model_params['fp_length']])
 
 					add_weights(
-						'layer_output_bias_{}'.format(layer),
-						[model_params['fp_length']])
+						collection = 'fingerprint',
+						weight_key = 'layer_output_bias_{}'.format(layer),
+						shape = [model_params['fp_length']])
 
 			 # neural fingerprint graph integration layer weights and biases
 			in_and_out_sizes = zip(all_layer_sizes[:-1], all_layer_sizes[1:])
 			for layer, (N_prev, N_cur) in enumerate(in_and_out_sizes):
 				with tf.name_scope("layer_{}/".format(layer)) as layer_scope:
-					 add_weights(
-						 "layer_{}_biases".format(layer),
-						 [N_cur])
+					add_weights(
+						collection = "fingerprint",
+						weight_key = "layer_{}_biases".format(layer),
+						shape = [N_cur])
 
-					 add_weights(
-						 "layer_{}_self_filter".format(layer),
-						 [N_prev, N_cur])
+					add_weights(
+						collection = "fingerprint",
+						weight_key = "layer_{}_self_filter".format(layer),
+						shape = [N_prev, N_cur])
 
-					 for degree in degrees:
-						 add_weights(
-							 'layer_{}_neighbor_{}_filter'.format(layer, degree),
-							[N_prev + num_bond_features(), N_cur])
+					for degree in degrees:
+						add_weights(
+							collection = 'fingerprint',
+							weight_key = 'layer_{}_neighbor_{}_filter'.format(layer, degree),
+							shape = [N_prev + num_bond_features(), N_cur])
 
 	with tf.name_scope("prediction") as scope:
 		# prediction network weights and biases
 		layer_sizes = model_params['prediction_layer_sizes'] + [1]
 		for i, shape in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
 			add_weights(
-				"prediction_weights_{}".format(i),
-				shape)
+				collection = "prediction",
+				weight_key = "prediction_weights_{}".format(i),
+				shape = shape)
 
 			add_weights(
-				"prediction_biases_{}".format(i),
-				[shape[1]])
+				collection = "prediction",
+				weight_key = "prediction_biases_{}".format(i),
+				shape = [shape[1]])
 
 	return variables
 
@@ -354,10 +372,12 @@ def build_loss_network(
 		# http://stackoverflow.com/questions/33846069/how-to-set-rmse-cost-function-in-tensorflow
 		# compute the rmse in the original space to get the units right
 		rmse = tf.sqrt(tf.reduce_mean((normed_predictions - normed_labels)**2), name="rmse")
+
 		regularization = tf.add(
-			model_params['l2_penalty'] * variables['l2_loss'],
-			model_params['l1_penalty'] * variables['l1_loss'],
+			variables['l2_loss'] * model_params['l2_penalty'] / variables['n_params']['fingerprint'],
+			variables['l1_loss'] * model_params['l1_penalty'] / variables['n_params']['prediction'],
 			name="regularization")
+
 		loss = tf.add(rmse, regularization, name=loss_scope)
 		return predictions, loss
 

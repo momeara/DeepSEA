@@ -66,13 +66,6 @@ def fit_fingerprints(
 	with tf.device(task_params['device']):
 		variables = initialize_variables(train_params, model_params)
 
-#		with open('/mnt/nfs/work/momeara/sea/DeepSEA/neural-fingerprint/fit_models/2015-05-24-delaney.pickle', 'rb') as handle:
-#			fp_parser, fp_weights, net_parser, net_weights = pickle.load(handle)
-#
-#		load_variables(fp_parser, fp_weights, net_parser, net_weights, variables, model_params)
-
-
-
 		saver = tf.train.Saver()
 
 		train_smiles, train_labels = smiles_labels_batch_queue(train_params)
