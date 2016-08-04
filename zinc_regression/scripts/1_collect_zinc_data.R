@@ -8,6 +8,8 @@ library(readr)
 library(Zr)
 library(ggplot2)
 library(tidyr)
+source("~/work/sea/scripts/data_repo.R")
+data_repo <- get_data_repo("sea_chembl21")
 
 catalog_short_names <- c(
 	"hmdbendo",
@@ -259,6 +261,36 @@ x %>%
 x %>%
 	dplyr::slice(8001:10800) %>%
 	readr::write_tsv("data/hmdbendo_protomers_test_160606.tsv")
+
+
+chembl_compounds <- data_repo %>%
+	tbl("compounds") %>%
+	dplyr::select(zinc_id, chembl_smiles, molecular_weight) %>%
+	collect(n=Inf) %>%
+	filter(!is.na(molecular_weight)) %>%
+	dplyr::mutate(x=runif(n())) %>% dplyr::arrange(x) %>% dplyr::select(-x)
+
+chembl_compounds %>%
+	dplyr::slice(1:200000) %>%
+	readr::write_tsv("data/chembl21_compounds_train_160731.tsv")
+chembl_compounds %>%
+	dplyr::slice(200001:300000) %>%
+	readr::write_tsv("data/chembl21_compounds_validate_160731.tsv")
+chembl_compounds %>%
+	dplyr::slice(300001:356139) %>%
+	readr::write_tsv("data/chembl21_compounds_test_160731.tsv")
+
+### delaney
+
+delaney <- readr::read_csv("../neural-fingerprint/data/2015-05-24-delaney/delaney-processed.csv") %>%
+	dplyr::select(
+		substance_id=`Compound ID`,
+		smiles,
+		solubility=`measured log solubility in mols per litre`)
+delaney %>% readr::write_tsv("data/delaney_160701.tsv")
+
+
+
 
 
 # run on cluster

@@ -24,13 +24,10 @@ echo "Requesting device: $DEVICE_ID"
   --h1_size 100 \
   --l2_penalty .01 \
   --l1_penalty 0.0 \
-  --fp_normalize \
   --prediction_layer_sizes 512 100 \
-  --epochs 15 \
-  --batch_size 10 \
   --eval_frequency 100 \
   --log_init_scale -4 \
-  --log_learning_rate -4 \
+  --log_learning_rate -6 \
   --log_stepsize -6 \
   --log_b1 -3 \
   --log_b2 -2

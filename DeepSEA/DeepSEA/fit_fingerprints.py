@@ -9,7 +9,8 @@ from __future__ import print_function
 import time
 import tensorflow as tf
 import numpy as np
-
+import pickle
+from neuralfingerprint.util import WeightsParser
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from DeepSEA.util import (
@@ -23,6 +24,7 @@ from DeepSEA.queue_substances import (
 
 from DeepSEA.model import (
 	initialize_variables,
+	load_variables,
 	build_summary_network,
 	build_neural_fps_network,
 	build_morgan_fps_network,
@@ -44,6 +46,7 @@ def eval_in_batches(sess, coord, threads, predictions, labels, n_batches):
 	except tf.errors.OutOfRangeError:
 		pass
 
+
 	predictions_eval = np.concatenate(predictions_eval)
 	labels_eval = np.concatenate(labels_eval)
 	return predictions_eval, labels_eval
@@ -63,6 +66,15 @@ def fit_fingerprints(
 	with tf.device(task_params['device']):
 		variables = initialize_variables(train_params, model_params)
 
+#		with open('/mnt/nfs/work/momeara/sea/DeepSEA/neural-fingerprint/fit_models/2015-05-24-delaney.pickle', 'rb') as handle:
+#			fp_parser, fp_weights, net_parser, net_weights = pickle.load(handle)
+#
+#		load_variables(fp_parser, fp_weights, net_parser, net_weights, variables, model_params)
+
+
+
+		saver = tf.train.Saver()
+
 		train_smiles, train_labels = smiles_labels_batch_queue(train_params)
 		if model_params['fp_type'] == 'neural':
 			train_substances = smiles_to_flat_substances_network(
@@ -80,7 +92,7 @@ def fit_fingerprints(
 		train_predictions, train_loss = build_loss_network(
 			train_normed_predictions, train_labels, variables, model_params)
 		optimizer = build_optimizer(train_loss, train_params)
-		train_summary = build_summary_network(train_loss)
+		train_summary = build_summary_network(train_fps, train_loss, variables, model_params)
 
 		validate_smiles, validate_labels = smiles_labels_batch_queue(validate_params)
 		if model_params['fp_type'] == 'neural':
@@ -98,6 +110,7 @@ def fit_fingerprints(
 			validate_fps, variables, model_params)
 		validate_predictions, validate_loss = build_loss_network(
 			validate_normed_predictions, validate_labels, variables, model_params)
+#		validate_summary = build_summary_network(validate_fps, validate_loss, variables, model_params)
 
 		test_smiles, test_labels = smiles_labels_batch_queue(test_params)
 		if model_params['fp_type'] == 'neural':
@@ -134,17 +147,25 @@ def fit_fingerprints(
 		log_device_placement=False)
 
 	with tf.Session(config=session_config) as sess:
-		sess.run(tf.initialize_all_variables())
-		sess.run(tf.initialize_local_variables())
+		if task_params['restore_from_checkpoint']:
+			saver.restore(
+				sess=sess,
+				save_path=task_params['save_path'])
+			if task_params['verbose']:
+				print("Restoring variables from '{}'".format(task_params['save_path']))
+		else:
+			sess.run(tf.initialize_all_variables())
+			sess.run(tf.initialize_local_variables())
+
 		coord = tf.train.Coordinator()
 		threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
 		if task_params['verbose']:
 			print("Initalized tensorflow session ...")
 
-
-		train_writer = tf.train.SummaryWriter(task_params['summaries_dir'] + '/train', sess.graph)
-		test_writer = tf.train.SummaryWriter(task_params['summaries_dir'] + '/test')
+		train_writer = tf.train.SummaryWriter(
+			logdir=task_params['summaries_dir'] + '/train_' + time.strftime("%Y%m%d_%H-%M-%S"),
+			graph=sess.graph)
 
 		try:
 			for train_step in xrange(train_params['n_batches']):
@@ -156,7 +177,15 @@ def fit_fingerprints(
 				training_loss_curve += [loss]
 				train_rmse = rmse(predictions, labels)
 				training_rmse_curve += [train_rmse]
-				test_writer.add_summary(summary, train_step)
+				train_writer.add_summary(summary, train_step)
+
+				if train_step % task_params['checkpoint_frequency'] == 0:
+					save_path = saver.save(
+						sess=sess,
+						save_path=task_params['save_path'],
+						global_step=train_step)
+					if task_params['verbose']:
+						print("Saving variables to '{}'".format(save_path))
 
 				if train_step % validate_params['validate_frequency'] == 0:
 

@@ -13,7 +13,9 @@ setup(
     author_email="mattjomeara@gmail.com",
     license="MIT",
     packages=['DeepSEA'],
-	scripts = ['bin/fit_fingerprints'],
+	scripts = [
+		'bin/fit_fingerprints',
+		'bin/filter_valid_substances'],
     install_requires=[
         'numpy',
         'tensorflow',

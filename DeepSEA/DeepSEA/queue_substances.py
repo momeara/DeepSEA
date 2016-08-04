@@ -12,6 +12,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 import tensorflow as tf
 from neuralfingerprint.mol_graph import degrees
+from neuralfingerprint.mol_graph import graph_from_smiles
 from neuralfingerprint.build_convnet import array_rep_from_smiles
 from neuralfingerprint.features import (
     num_atom_features,
@@ -31,8 +32,15 @@ def smiles_to_flat_substances_network(smiles, eval_params):
     """
     def func(smiles):
 
-        data = array_rep_from_smiles(tuple(smiles))
-
+        try:
+            data = array_rep_from_smiles(tuple(smiles))
+        except Exception as e_smiles:
+            for s in smiles:
+                try:
+                    graph_from_smiles(smiles)
+                except Exception as e_s:
+                    raise Exception("failed to parse smiles {}. error: {}".format(s, e_s.message))
+            raise Exception("failed to parse smiles batch {} with error: {}".format(smiles, e_smiles.message))
         # list of lists -> [n_atoms, 2] array with columns (substance_id, atom_id)
         substance_atoms = []
         for substance_i, atoms_i in enumerate(data['atom_list']):
@@ -64,7 +72,8 @@ def smiles_to_flat_substances_network(smiles, eval_params):
             tf.float32,                         #i=2     bond_features
             tf.int64] +                         #i=3     substance_atoms
             [tf.int64 for degree in degrees] +  #i=4-9   atom_neighbors
-            [tf.int64 for degree in degrees])   #i=10-15 bond_neighbors
+            [tf.int64 for degree in degrees],   #i=10-15 bond_neighbors
+	name="flat_substances_batch")
 
     flat_substances_batch = {}
 
