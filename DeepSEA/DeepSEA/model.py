@@ -15,12 +15,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
 import tensorflow as tf
-from neuralfingerprint.util import WeightsParser
-from neuralfingerprint import load_data
-from neuralfingerprint.build_convnet import array_rep_from_smiles
 from neuralfingerprint.features import num_atom_features, num_bond_features
 from neuralfingerprint.mol_graph import degrees
-from neuralfingerprint.build_convnet import array_rep_from_smiles
 
 from DeepSEA.rdkit_util import (
 	smiles_to_fps,

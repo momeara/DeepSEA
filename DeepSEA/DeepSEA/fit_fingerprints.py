@@ -9,8 +9,6 @@ from __future__ import print_function
 import time
 import tensorflow as tf
 import numpy as np
-import pickle
-from neuralfingerprint.util import WeightsParser
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from DeepSEA.util import (

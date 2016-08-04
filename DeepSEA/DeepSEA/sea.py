@@ -6,7 +6,9 @@
 import tensorflow as tf
 
 
+def compute_sea(model_params, task_params):
 
+    
 
 
 def main(args=sys.argv[1:], stdout=sys.stdout, stderr=sys.stderr):

@@ -338,6 +338,46 @@ class SubstancesToTFRecords(tf.test.TestCase):
 			self.assertAllEqual(substances_batch_eval[13].shape, (0,))   #[n_degree_4_atoms, 4]
 			self.assertAllEqual(substances_batch_eval[14].shape, (0,))   #[n_degree_5_atoms, 5]
 
+	def prepare_int64(data, output_fname):
+	    print("prepare int64:")
+	    with tictoc():
+	        with tf.python_io.TFRecordWriter(output_fname) as writer:
+	            for atom_features in data:
+	                value = atom_features.reshape(-1).tolist()
+	                bit_features = tf.train.Feature(int64_list =  tf.train.Int64List(value=value))
+	                features = {'bit_features' : bit_features}
+	                example = tf.train.Example(features=tf.train.Features(feature=features))
+	                serialized_example = example.SerializeToString()
+	                writer.write(serialized_example)
+	    print("File size: {}".format(os.path.getsize(output_fname)))
+
+	def prepare_sparse(data, output_fname):
+	    print("prepare sparse:")
+	    with tictoc():
+	        with tf.python_io.TFRecordWriter(output_fname) as writer:
+	            for atom_features in data:
+	                value = atom_features.reshape(-1).nonzero()[0].tolist()
+	                bit_features = tf.train.Feature(int64_list =  tf.train.Int64List(value=value))
+	                features = {'bit_features' : bit_features}
+	                example = tf.train.Example(features=tf.train.Features(feature=features))
+	                serialized_example = example.SerializeToString()
+	                writer.write(serialized_example)
+	    print("File size: {}".format(os.path.getsize(output_fname)))
+
+	def prepare_packed(data, output_fname):
+	    print("prepare packed:")
+	    with tictoc():
+	        with tf.python_io.TFRecordWriter(output_fname) as writer:
+	            for atom_features in data:
+	                value = np.packbits(atom_features.reshape(-1)).tobytes()
+	                bit_features = tf.train.Feature(bytes_list = tf.train.BytesList(value=value))
+	                features = {'bit_features' : bit_features}
+	                example = tf.train.Example(features=tf.train.Features(feature=features))
+	                serialized_example = example.SerializeToString()
+	                writer.write(serialized_example)
+	    print("File size: {} bytes".format(os.path.getsize(output_fname)))
+
+
 
 if __name__ == '__main__':
     unittest.main()
