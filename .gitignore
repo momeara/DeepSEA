@@ -26,6 +26,10 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 
+data/
+checkpoints/
+logs/
+
 # Temporary files
 .\#*
 \#*\#

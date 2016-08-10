@@ -21,12 +21,14 @@ from DeepSEA.queue_substances import (
 )
 
 from DeepSEA.model import (
-	initialize_variables,
+	initialize_fingerprint_variables,
+	initialize_convolution_prediction_variables,
 	load_variables,
-	build_summary_network,
+	build_fingerprint_summary_network,
+	build_prediction_summary_network,
 	build_neural_fps_network,
 	build_morgan_fps_network,
-	build_normed_prediction_network,
+	build_convolution_prediction_network,
 	build_loss_network,
 	build_optimizer,
 )
@@ -62,7 +64,8 @@ def fit_fingerprints(
 		print("Building fingerprint function of length {fp_length} as a convolutional network with width {fp_width} and depth {fp_depth} ...".format(**model_params))
 
 	with tf.device(task_params['device']):
-		variables = initialize_variables(train_params, model_params)
+		fingerprint_variables = initialize_fingerprint_variables(train_params, model_params)
+		prediction_variables = intialize_convolution_prediction_variables(train_params, model_params)
 
 		saver = tf.train.Saver()
 
@@ -71,19 +74,26 @@ def fit_fingerprints(
 			train_substances = smiles_to_flat_substances_network(
 				train_smiles, train_params)
 			train_fps = build_neural_fps_network(
-				train_substances, variables, model_params)
+				train_substances, fingerprint_variables, model_params)
 		elif model_params['fp_type'] == 'morgan':
 			train_fps = build_morgan_fps_network(
 				train_smiles, train_params, model_params)
 		else:
 			raise Exception("Unrecognized fp_type {}".format(model_params['fp_type']))
 
-		train_normed_predictions = build_normed_prediction_network(
-			train_fps, variables, model_params)
+		train_normed_predictions = build_convolution_prediction_network(
+			train_fps, prediction_variables, model_params)
 		train_predictions, train_loss = build_loss_network(
-			train_normed_predictions, train_labels, variables, model_params)
+			train_normed_predictions, train_labels,
+			fingerprint_variables, prediction_variables, model_params)
 		optimizer = build_optimizer(train_loss, train_params)
-		train_summary = build_summary_network(train_fps, train_loss, variables, model_params)
+		train_fingerprint_summary = build_fingerprint_summary_network(
+			train_fps, train_loss,
+			fingerprint_variables, model_params)
+		train_prediction_summary = build_prediction_summary_network(
+			train_fps, train_loss,
+			prediction_variables, model_params)
+		summaries = tf.merge_all_summariers()
 
 		validate_smiles, validate_labels = smiles_labels_batch_queue(validate_params)
 		if model_params['fp_type'] == 'neural':
@@ -97,11 +107,10 @@ def fit_fingerprints(
 		else:
 			raise Exception("Unrecognized fp_type {}".format(model_params['fp_type']))
 
-		validate_normed_predictions = build_normed_prediction_network(
+		validate_normed_predictions = build_convolution_prediction_network(
 			validate_fps, variables, model_params)
 		validate_predictions, validate_loss = build_loss_network(
 			validate_normed_predictions, validate_labels, variables, model_params)
-#		validate_summary = build_summary_network(validate_fps, validate_loss, variables, model_params)
 
 		test_smiles, test_labels = smiles_labels_batch_queue(test_params)
 		if model_params['fp_type'] == 'neural':
@@ -114,7 +123,7 @@ def fit_fingerprints(
 		else:
 			raise Exception("Unrecognized fp_type {}".format(model_params['fp_type']))
 
-		test_normed_predictions = build_normed_prediction_network(
+		test_normed_predictions = build_convolution_prediction_network(
 			test_fps, variables, model_params)
 		test_predictions, test_loss = build_loss_network(
 			test_normed_predictions, test_labels, variables, model_params)

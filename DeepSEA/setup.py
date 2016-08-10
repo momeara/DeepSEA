@@ -15,6 +15,7 @@ setup(
     packages=['DeepSEA'],
 	scripts = [
 		'bin/fit_fingerprints',
+		'bin/fit_activity_triples',
 		'bin/filter_valid_substances'],
     install_requires=[
         'numpy',

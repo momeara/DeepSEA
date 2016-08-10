@@ -37,7 +37,7 @@ def smiles_to_flat_substances_network(smiles, eval_params):
         except Exception as e_smiles:
             for s in smiles:
                 try:
-                    graph_from_smiles(smiles)
+                    graph_from_smiles(s)
                 except Exception as e_s:
                     raise Exception("failed to parse smiles {}. error: {}".format(s, e_s.message))
             raise Exception("failed to parse smiles batch {} with error: {}".format(smiles, e_smiles.message))
@@ -136,5 +136,36 @@ def smiles_labels_batch_queue(eval_params):
         num_threads = eval_params['queue_num_threads'],
         seed = eval_params['queue_seed'])
     return smiles_batch, labels_batch
+
+
+
+def smiles_triple_batch_queue(eval_params):
+    fname_queue = tf.train.string_input_producer(
+        [eval_params['substances_fname']],
+        num_epochs=None,
+        shuffle=True,
+        name="substances_fname_queue")
+
+    reader = tf.TextLineReader(
+        skip_header_lines=1,
+        name="substance_file_reader")
+    _, record = reader.read(queue=fname_queue)
+	# entries = [
+	#   target_id,
+	#   substance_id, smiles,
+	#   substance_plus_id, smiles_plus
+	#   substance_minus_id, smiles_minus]
+	entries = tf.decode_csv(
+        records=record,
+        record_defaults=[[""], [""], [""], [""], [""], [""], [""]],
+        field_delim=eval_params['substances_field_delim'])
+    smiles_batch, smiles_plus_batch, smiles_minus_batch = tf.train.shuffle_batch(
+        tensors = [entries[2], entries[4], entries[6]],
+        batch_size = eval_params['batch_size'],
+        capacity = eval_params['queue_capacity'],
+        min_after_dequeue = eval_params['queue_min_after_dequeue'],
+        num_threads = eval_params['queue_num_threads'],
+        seed = eval_params['queue_seed'])
+    return smiles_batch, smiles_plus_batch, smiles_minus_batch
 
 
